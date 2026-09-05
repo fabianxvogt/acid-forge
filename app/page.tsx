@@ -235,11 +235,12 @@ export default function Home() {
   function setSoundValue(key: 'cutoff' | 'drive' | 'resonance', value: number) {
     updateSession((draft) => {
       draft[key] = value;
-      if (playing) {
+      if (playing && key !== 'resonance') {
         const active = draft.patterns[draft.activePattern];
-        const existing = active.automation.find((point) => point.step === selectedStep);
-        if (existing && key !== 'resonance') existing[key] = value;
-        else if (!existing) active.automation.push({ step: selectedStep, cutoff: draft.cutoff, drive: draft.drive });
+        const recordingStep = playhead?.pattern === draft.activePattern ? playhead.step : selectedStep;
+        const existing = active.automation.find((point) => point.step === recordingStep);
+        if (existing) existing[key] = value;
+        else active.automation.push({ step: recordingStep, cutoff: draft.cutoff, drive: draft.drive });
       }
     });
   }
