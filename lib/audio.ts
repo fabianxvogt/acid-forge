@@ -283,16 +283,19 @@ function writeVarLength(value: number): number[] {
 export function renderMidi(session: Session): Blob {
   const ticksPerQuarter = 480;
   const events: Array<{ tick: number; data: number[] }> = [];
-  const pattern = session.patterns[session.activePattern];
-  const ticksPerStep = Math.round((ticksPerQuarter * 4) / pattern.steps);
-  for (let step = 0; step < pattern.steps * 4; step += 1) {
-    const event = pattern.events[step % pattern.steps];
-    if (event.note === null) continue;
-    const start = step * ticksPerStep;
-    const duration = Math.max(30, Math.round(ticksPerStep * event.gate));
-    const velocity = Math.round(clamp(event.velocity * (event.accent ? 1.12 : 1), 0.05, 1) * 127);
-    events.push({ tick: start, data: [0x90, event.note, velocity] });
-    events.push({ tick: start + duration, data: [0x80, event.note, 0] });
+  const chain = patternChain(session, session.activePattern);
+  for (let bar = 0; bar < 4; bar += 1) {
+    const pattern = session.patterns[chain[bar % chain.length]];
+    const ticksPerStep = Math.round((ticksPerQuarter * 4) / pattern.steps);
+    for (let step = 0; step < pattern.steps; step += 1) {
+      const event = pattern.events[step];
+      if (event.note === null) continue;
+      const start = bar * ticksPerQuarter * 4 + step * ticksPerStep;
+      const duration = Math.max(30, Math.round(ticksPerStep * event.gate));
+      const velocity = Math.round(clamp(event.velocity * (event.accent ? 1.12 : 1), 0.05, 1) * 127);
+      events.push({ tick: start, data: [0x90, event.note, velocity] });
+      events.push({ tick: start + duration, data: [0x80, event.note, 0] });
+    }
   }
   events.sort((a, b) => a.tick - b.tick || a.data[0] - b.data[0]);
   const track: number[] = [0, 0xff, 0x51, 3, (60000000 / session.bpm) >> 16, (60000000 / session.bpm) >> 8 & 0xff, 60000000 / session.bpm & 0xff];
