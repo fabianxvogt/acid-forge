@@ -2,8 +2,8 @@ import {
   PRESETS,
   buildMidiBytes,
   buildEventTimeline,
+  liveStepTiming,
   sessionPatternChain,
-  stepDurationSeconds,
   type Session,
   noteFrequency,
 } from './session';
@@ -73,7 +73,7 @@ export class AcidAudioEngine {
 
   async preview(note: number, presetId: string, cutoff: number, drive: number): Promise<void> {
     await this.ensureContext();
-    this.playVoice(note, 0.82, 0.94, false, false, presetId, cutoff, drive, 0.48);
+    this.playVoice(note, 0.82, false, false, presetId, cutoff, drive, 0.48 * 0.94);
   }
 
   private async ensureContext(): Promise<void> {
@@ -96,22 +96,21 @@ export class AcidAudioEngine {
     const automation = pattern.automation.find((point) => point.step === this.currentStep);
     const cutoff = automation?.cutoff ?? this.session.cutoff;
     const drive = automation?.drive ?? this.session.drive;
+    const timing = liveStepTiming(pattern, this.session.bpm, this.session.swing, this.currentStep, event.gate);
     if (event.note !== null) {
       this.playVoice(
         event.note,
         event.velocity,
-        event.gate,
         event.accent,
         event.slide,
         preset.id,
         cutoff,
         drive,
-        (60 / this.session.bpm) * (4 / pattern.steps),
+        timing.voiceSeconds,
       );
     }
     this.onStep?.(this.currentPattern, this.currentStep);
-    const stepDuration = stepDurationSeconds(pattern, this.session.bpm, this.session.swing, this.currentStep);
-    this.nextTickAt = Math.max(this.nextTickAt + stepDuration, now + 0.005);
+    this.nextTickAt = Math.max(this.nextTickAt + timing.stepSeconds, now + 0.005);
     this.currentStep += 1;
     if (this.currentStep >= pattern.steps) {
       this.currentStep = 0;
@@ -124,13 +123,12 @@ export class AcidAudioEngine {
   private playVoice(
     note: number,
     velocity: number,
-    gate: number,
     accent: boolean,
     slide: boolean,
     presetId: string,
     cutoff: number,
     drive: number,
-    stepDuration: number,
+    durationSeconds: number,
   ): void {
     if (!this.context || !this.output) return;
     const preset = PRESETS.find((item) => item.id === presetId) ?? PRESETS[0];
@@ -140,7 +138,7 @@ export class AcidAudioEngine {
     const shaper = this.context.createWaveShaper();
     const envelope = this.context.createGain();
     const voiceGain = this.context.createGain();
-    const duration = Math.max(0.08, stepDuration * clamp(gate, 0.1, 1));
+    const duration = Math.max(0.08, durationSeconds);
     const peak = clamp(0.09 + velocity * 0.13 + (accent ? preset.accent * 0.08 : 0), 0.08, 0.32);
     osc.type = preset.oscillator;
     osc.frequency.setValueAtTime(slide ? noteFrequency(note - 5) : noteFrequency(note), now);

@@ -4,6 +4,7 @@ import {
   buildMidiBytes,
   createDefaultSession,
   fourBarSampleCount,
+  liveStepTiming,
   noteFrequency,
   parseSession,
   serializeSession,
@@ -34,6 +35,10 @@ const swungStep = timeline.find((event) => event.patternIndex === 0 && event.ste
 assert.ok(swungStep, 'shared timeline must include the swung step');
 const unswungStepSeconds = (4 * 60 / session.bpm) / session.patterns[0].steps;
 assert.ok(swungStep.startSeconds > unswungStepSeconds, 'nonzero swing must delay odd steps');
+const evenLiveTiming = liveStepTiming(session.patterns[0], session.bpm, session.swing, 0, 0.9);
+const oddLiveTiming = liveStepTiming(session.patterns[0], session.bpm, session.swing, 1, 0.9);
+assert.ok(evenLiveTiming.stepSeconds > oddLiveTiming.stepSeconds, 'live scheduler must use swung even/odd spacing');
+assert.equal(oddLiveTiming.voiceSeconds, oddLiveTiming.stepSeconds * 0.9, 'live voice duration must follow swung step timing and gate');
 
 function readVarLength(bytes, start) {
   let value = 0;
@@ -86,4 +91,5 @@ console.log(JSON.stringify({
   bpm: session.bpm,
   malformedInputRejected: true,
   midiSwingAndChainTiming: true,
+  liveSwingVoiceTiming: true,
 }));

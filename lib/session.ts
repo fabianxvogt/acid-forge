@@ -321,6 +321,14 @@ export function stepDurationSeconds(pattern: Pattern, bpm: number, swing: number
   return next - start;
 }
 
+export function liveStepTiming(pattern: Pattern, bpm: number, swing: number, step: number, gate: number) {
+  const stepSeconds = stepDurationSeconds(pattern, bpm, swing, step);
+  return {
+    stepSeconds,
+    voiceSeconds: Math.max(0.08, stepSeconds * Math.min(1, Math.max(0.1, gate))),
+  };
+}
+
 export function buildEventTimeline(session: Session, bars = 4): ScheduledEvent[] {
   const timeline: ScheduledEvent[] = [];
   const chain = sessionPatternChain(session);
@@ -337,7 +345,7 @@ export function buildEventTimeline(session: Session, bars = 4): ScheduledEvent[]
         step,
         event,
         startSeconds: barStart + stepStartSeconds(pattern, session.bpm, session.swing, step),
-        durationSeconds: stepDurationSeconds(pattern, session.bpm, session.swing, step) * event.gate,
+        durationSeconds: liveStepTiming(pattern, session.bpm, session.swing, step, event.gate).voiceSeconds,
       });
     }
   }
