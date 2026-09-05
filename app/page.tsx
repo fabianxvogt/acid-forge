@@ -31,7 +31,7 @@ type ModelContext = {
       title: string;
       description: string;
       inputSchema: Record<string, unknown>;
-      execute: (input: unknown) => unknown | Promise<unknown>;
+      execute: (input: unknown) => unknown;
       annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
     },
     options?: { signal?: AbortSignal },
@@ -117,13 +117,14 @@ export default function Home() {
   }, [pattern]);
 
   useEffect(() => {
+    const audioEngine = engine.current;
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) setSession(parseSession(saved));
     } catch {
       setStatus('Saved data could not be restored; starting with a clean session.');
     }
-    return () => engine.current.stop();
+    return () => audioEngine.stop();
   }, []);
 
   useEffect(() => {
@@ -369,7 +370,7 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="status-strip" role="status" aria-live="polite"><span className={`status-dot ${playing ? 'status-dot-live' : ''}`} /><span>{status}</span><span className="status-hint">Keyboard: Z–M previews the voice · click a step to edit</span></div>
+      <output className="status-strip" aria-live="polite"><span className={`status-dot ${playing ? 'status-dot-live' : ''}`} /><span>{status}</span><span className="status-hint">Keyboard: Z–M previews the voice · click a step to edit</span></output>
 
       <section className="workspace-grid">
         <aside className="panel preset-panel">
@@ -379,7 +380,7 @@ export default function Home() {
         </aside>
 
         <section className="panel sequencer-panel">
-          <div className="panel-heading sequencer-heading"><div><span className="eyebrow">02 / event forge</span><h2>Step sequencer</h2></div><div className="step-toggle" role="group" aria-label="Pattern length">{[16, 32].map((length) => <button key={length} type="button" className={pattern.steps === length ? 'active' : ''} onClick={() => changeStepCount(length as 16 | 32)}>{length}</button>)}</div></div>
+          <div className="panel-heading sequencer-heading"><div><span className="eyebrow">02 / event forge</span><h2>Step sequencer</h2></div><fieldset className="step-toggle" aria-label="Pattern length">{[16, 32].map((length) => <button key={length} type="button" className={pattern.steps === length ? 'active' : ''} onClick={() => changeStepCount(length as 16 | 32)}>{length}</button>)}</fieldset></div>
           <div className="pattern-tabs" role="tablist" aria-label="Patterns">{session.patterns.map((item, index) => <button type="button" role="tab" aria-selected={index === session.activePattern} className={index === session.activePattern ? 'active' : ''} key={item.id} onClick={() => choosePattern(index)}><span>P{index + 1}</span>{item.name}</button>)}</div>
           <div className={`step-grid step-grid-${pattern.steps}`}>{pattern.events.map((item, index) => <StepButton key={`${pattern.id}-${index}`} event={item} index={index} selected={index === selectedStep} active={index === activePlayhead} onClick={() => setSelectedStep(index)} />)}</div>
           <div className="lane-heading"><span>FILTER AUTOMATION</span><span>{pattern.automation.length ? `${pattern.automation.length} recorded points` : 'Move filter / drive while running to record'}</span></div>
