@@ -104,6 +104,8 @@ export default function Home() {
   const [status, setStatus] = useState('Ready to heat up.');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState<'wav' | 'midi' | 'import' | null>(null);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
 
   const pattern = session.patterns[session.activePattern];
   const event = pattern.events[Math.min(selectedStep, pattern.events.length - 1)];
@@ -150,7 +152,9 @@ export default function Home() {
         if (!input || typeof input !== 'object') throw new Error('Input must be an object.');
         const value = input as { step?: unknown; note?: unknown; accent?: unknown; slide?: unknown; velocity?: unknown; gate?: unknown };
         const step = Number(value.step);
-        if (!Number.isInteger(step) || step < 1 || step > pattern.steps) throw new Error(`Step must be between 1 and ${pattern.steps}.`);
+        const currentSession = sessionRef.current;
+        const currentPattern = currentSession.patterns[currentSession.activePattern];
+        if (!Number.isInteger(step) || step < 1 || step > currentPattern.steps) throw new Error(`Step must be between 1 and ${currentPattern.steps}.`);
         if (value.note !== null && (!Number.isInteger(value.note) || Number(value.note) < 24 || Number(value.note) > 84)) throw new Error('Note must be null or a MIDI note from 24 to 84.');
         const nextEvent: Partial<StepEvent> = {
           note: value.note as number | null,
@@ -162,7 +166,7 @@ export default function Home() {
         updateSession((draft) => Object.assign(draft.patterns[draft.activePattern].events[step - 1], nextEvent));
         setSelectedStep(step - 1);
         setStatus(`WebMCP set step ${step}.`);
-        return { status: 'updated', step, note: nextEvent.note, pattern: session.activePattern + 1 };
+        return { status: 'updated', step, note: nextEvent.note, pattern: currentSession.activePattern + 1 };
       },
     }, { signal: lifecycle.signal })).catch(() => setStatus('Structured control registration is unavailable in this browser.'));
     return () => lifecycle.abort();
