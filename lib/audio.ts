@@ -1,4 +1,12 @@
-import { PRESETS, type Session, noteFrequency, patternDurationSeconds } from './session';
+import {
+  PRESETS,
+  buildMidiBytes,
+  buildEventTimeline,
+  sessionPatternChain,
+  stepDurationSeconds,
+  type Session,
+  noteFrequency,
+} from './session';
 
 export type StepCallback = (patternIndex: number, step: number) => void;
 
@@ -102,13 +110,12 @@ export class AcidAudioEngine {
       );
     }
     this.onStep?.(this.currentPattern, this.currentStep);
-    const stepDuration = (60 / this.session.bpm) * (4 / pattern.steps);
-    const swingOffset = this.currentStep % 2 === 1 ? this.session.swing * stepDuration : 0;
-    this.nextTickAt = Math.max(this.nextTickAt + stepDuration + swingOffset, now + 0.005);
+    const stepDuration = stepDurationSeconds(pattern, this.session.bpm, this.session.swing, this.currentStep);
+    this.nextTickAt = Math.max(this.nextTickAt + stepDuration, now + 0.005);
     this.currentStep += 1;
     if (this.currentStep >= pattern.steps) {
       this.currentStep = 0;
-      const chain = patternChain(this.session, this.currentPattern);
+      const chain = sessionPatternChain(this.session);
       const chainPosition = chain.indexOf(this.currentPattern);
       this.currentPattern = chain[(chainPosition + 1) % chain.length];
     }
@@ -173,11 +180,8 @@ export class AcidAudioEngine {
 }
 
 export function patternChain(session: Session, patternIndex: number): number[] {
-  const chain = session.patterns[session.activePattern]?.chain;
-  if (chain?.length) {
-    return chain.filter((index) => Number.isInteger(index) && index >= 0 && index < session.patterns.length);
-  }
-  return [patternIndex];
+  const chain = sessionPatternChain(session);
+  return chain.length ? chain : [patternIndex];
 }
 
 export async function renderWav(
@@ -195,21 +199,17 @@ export async function renderWav(
   output.gain.value = 0.78;
   output.connect(context.destination);
   const preset = PRESETS.find((item) => item.id === session.presetId) ?? PRESETS[0];
-  let cursor = 0;
-  let patternIndex = session.activePattern;
-  for (let bar = 0; bar < bars; bar += 1) {
-    const pattern = session.patterns[patternIndex];
-    const stepDuration = patternDurationSeconds(pattern, session.bpm) / pattern.steps;
-    for (let step = 0; step < pattern.steps; step += 1) {
-      const event = pattern.events[step];
+  for (const scheduled of buildEventTimeline(session, bars)) {
+      const event = scheduled.event;
       if (event.note !== null) {
-        const start = cursor + step * stepDuration;
+        const start = scheduled.startSeconds;
         const osc = context.createOscillator();
         const filter = context.createBiquadFilter();
         const shaper = context.createWaveShaper();
         const envelope = context.createGain();
-        const automation = pattern.automation.find((point) => point.step === step);
-        const duration = Math.max(0.08, stepDuration * event.gate);
+        const pattern = session.patterns[scheduled.patternIndex];
+        const automation = pattern.automation.find((point) => point.step === scheduled.step);
+        const duration = Math.max(0.08, scheduled.durationSeconds);
         osc.type = preset.oscillator;
         osc.frequency.setValueAtTime(event.slide ? noteFrequency(event.note - 5) : noteFrequency(event.note), start);
         if (event.slide) osc.frequency.linearRampToValueAtTime(noteFrequency(event.note), start + Math.min(0.12, duration * 0.65));
@@ -226,11 +226,6 @@ export async function renderWav(
         osc.start(start);
         osc.stop(Math.min(seconds, start + duration + preset.decay * 0.2 + 0.04));
       }
-    }
-    cursor += patternDurationSeconds(pattern, session.bpm);
-    const chain = patternChain(session, patternIndex);
-    const chainPosition = chain.indexOf(patternIndex);
-    patternIndex = chain[(chainPosition + 1) % chain.length];
   }
   const buffer = await context.startRendering();
   const wav = encodeWav(buffer);
@@ -259,54 +254,16 @@ function encodeWav(buffer: AudioBuffer): ArrayBuffer {
   write(36, 'data');
   view.setUint32(40, dataLength, true);
   for (let index = 0; index < channel.length; index += 1) {
-    const sample = clamp(channel[index], -1, 1);
+    const rawSample = channel[index];
+    if (!Number.isFinite(rawSample)) throw new Error(`Offline render produced a non-finite sample at index ${index}.`);
+    const sample = clamp(rawSample, -1, 1);
     view.setInt16(44 + index * 2, sample < 0 ? sample * 32768 : sample * 32767, true);
   }
   return output;
 }
 
-function writeVarLength(value: number): number[] {
-  let buffer = value & 0x7f;
-  const bytes = [];
-  while ((value >>= 7)) {
-    buffer <<= 8;
-    buffer |= (value & 0x7f) | 0x80;
-  }
-  for (;;) {
-    bytes.push(buffer & 0xff);
-    if (buffer & 0x80) buffer >>= 8;
-    else break;
-  }
-  return bytes;
-}
-
 export function renderMidi(session: Session): Blob {
-  const ticksPerQuarter = 480;
-  const events: Array<{ tick: number; data: number[] }> = [];
-  const chain = patternChain(session, session.activePattern);
-  for (let bar = 0; bar < 4; bar += 1) {
-    const pattern = session.patterns[chain[bar % chain.length]];
-    const ticksPerStep = Math.round((ticksPerQuarter * 4) / pattern.steps);
-    for (let step = 0; step < pattern.steps; step += 1) {
-      const event = pattern.events[step];
-      if (event.note === null) continue;
-      const start = bar * ticksPerQuarter * 4 + step * ticksPerStep;
-      const duration = Math.max(30, Math.round(ticksPerStep * event.gate));
-      const velocity = Math.round(clamp(event.velocity * (event.accent ? 1.12 : 1), 0.05, 1) * 127);
-      events.push({ tick: start, data: [0x90, event.note, velocity] });
-      events.push({ tick: start + duration, data: [0x80, event.note, 0] });
-    }
-  }
-  events.sort((a, b) => a.tick - b.tick || a.data[0] - b.data[0]);
-  const track: number[] = [0, 0xff, 0x51, 3, (60000000 / session.bpm) >> 16, (60000000 / session.bpm) >> 8 & 0xff, 60000000 / session.bpm & 0xff];
-  let previousTick = 0;
-  for (const event of events) {
-    track.push(...writeVarLength(event.tick - previousTick), ...event.data);
-    previousTick = event.tick;
-  }
-  track.push(0, 0xff, 0x2f, 0);
-  const bytes = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, ticksPerQuarter >> 8, ticksPerQuarter & 0xff, 0x4d, 0x54, 0x72, 0x6b, (track.length >> 24) & 0xff, (track.length >> 16) & 0xff, (track.length >> 8) & 0xff, track.length & 0xff, ...track];
-  return new Blob([new Uint8Array(bytes)], { type: 'audio/midi' });
+  return new Blob([new Uint8Array(buildMidiBytes(session))], { type: 'audio/midi' });
 }
 
 declare global {

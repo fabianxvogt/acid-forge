@@ -47,6 +47,15 @@ export type Session = {
   patterns: Pattern[];
 };
 
+export type ScheduledEvent = {
+  bar: number;
+  patternIndex: number;
+  step: number;
+  event: StepEvent;
+  startSeconds: number;
+  durationSeconds: number;
+};
+
 export const SESSION_VERSION = 1 as const;
 
 export const PRESETS: Preset[] = [
@@ -291,6 +300,93 @@ export function noteFrequency(note: number): number {
 
 export function patternDurationSeconds(pattern: Pattern, bpm: number): number {
   return (4 * 60) / bpm;
+}
+
+export function sessionPatternChain(session: Session): number[] {
+  const chain = session.patterns[session.activePattern]?.chain.filter(
+    (index) => Number.isInteger(index) && index >= 0 && index < session.patterns.length,
+  );
+  return chain?.length ? chain : [session.activePattern];
+}
+
+export function stepStartSeconds(pattern: Pattern, bpm: number, swing: number, step: number): number {
+  const base = patternDurationSeconds(pattern, bpm) / pattern.steps;
+  const clampedSwing = Math.min(0.35, Math.max(0, swing));
+  return Math.floor(step / 2) * base * 2 + (step % 2 === 1 ? base * (1 + clampedSwing) : 0);
+}
+
+export function stepDurationSeconds(pattern: Pattern, bpm: number, swing: number, step: number): number {
+  const start = stepStartSeconds(pattern, bpm, swing, step);
+  const next = step + 1 < pattern.steps ? stepStartSeconds(pattern, bpm, swing, step + 1) : patternDurationSeconds(pattern, bpm);
+  return next - start;
+}
+
+export function buildEventTimeline(session: Session, bars = 4): ScheduledEvent[] {
+  const timeline: ScheduledEvent[] = [];
+  const chain = sessionPatternChain(session);
+  for (let bar = 0; bar < bars; bar += 1) {
+    const patternIndex = chain[bar % chain.length];
+    const pattern = session.patterns[patternIndex];
+    const barStart = bar * patternDurationSeconds(pattern, session.bpm);
+    for (let step = 0; step < pattern.steps; step += 1) {
+      const event = pattern.events[step];
+      if (event.note === null) continue;
+      timeline.push({
+        bar,
+        patternIndex,
+        step,
+        event,
+        startSeconds: barStart + stepStartSeconds(pattern, session.bpm, session.swing, step),
+        durationSeconds: stepDurationSeconds(pattern, session.bpm, session.swing, step) * event.gate,
+      });
+    }
+  }
+  return timeline;
+}
+
+function writeMidiVarLength(value: number): number[] {
+  let buffer = value & 0x7f;
+  const bytes: number[] = [];
+  while ((value >>= 7)) {
+    buffer <<= 8;
+    buffer |= (value & 0x7f) | 0x80;
+  }
+  for (;;) {
+    bytes.push(buffer & 0xff);
+    if (buffer & 0x80) buffer >>= 8;
+    else break;
+  }
+  return bytes;
+}
+
+export function buildMidiBytes(session: Session): number[] {
+  const ticksPerQuarter = 480;
+  const events: Array<{ tick: number; data: number[] }> = [];
+  for (const scheduled of buildEventTimeline(session, 4)) {
+    const event = scheduled.event;
+    const start = Math.round((scheduled.startSeconds / (60 / session.bpm)) * ticksPerQuarter);
+    const duration = Math.max(30, Math.round((scheduled.durationSeconds / (60 / session.bpm)) * ticksPerQuarter));
+    const velocity = Math.round(Math.min(1, Math.max(0.05, event.velocity * (event.accent ? 1.12 : 1))) * 127);
+    events.push({ tick: start, data: [0x90, event.note!, velocity] });
+    events.push({ tick: start + duration, data: [0x80, event.note!, 0] });
+  }
+  events.sort((a, b) => a.tick - b.tick || a.data[0] - b.data[0]);
+  const tempo = Math.round(60_000_000 / session.bpm);
+  const track: number[] = [0, 0xff, 0x51, 3, (tempo >> 16) & 0xff, (tempo >> 8) & 0xff, tempo & 0xff];
+  let previousTick = 0;
+  for (const event of events) {
+    track.push(...writeMidiVarLength(event.tick - previousTick), ...event.data);
+    previousTick = event.tick;
+  }
+  track.push(0, 0xff, 0x2f, 0);
+  return [
+    0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1,
+    ticksPerQuarter >> 8, ticksPerQuarter & 0xff,
+    0x4d, 0x54, 0x72, 0x6b,
+    (track.length >> 24) & 0xff, (track.length >> 16) & 0xff,
+    (track.length >> 8) & 0xff, track.length & 0xff,
+    ...track,
+  ];
 }
 
 export function fourBarSampleCount(bpm: number, sampleRate = 44100): number {

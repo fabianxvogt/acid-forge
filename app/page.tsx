@@ -22,6 +22,7 @@ import {
 } from '@/lib/session';
 
 const STORAGE_KEY = 'acid-forge.session.v1';
+const MAX_SESSION_FILE_BYTES = 1_000_000;
 const NOTE_OPTIONS = Array.from({ length: 49 }, (_, index) => 24 + index);
 
 type ModelContext = {
@@ -296,6 +297,7 @@ export default function Home() {
   async function importSession(file: File) {
     setBusy('import');
     try {
+      if (file.size > MAX_SESSION_FILE_BYTES) throw new Error('Session file is too large (maximum 1 MB).');
       const text = await file.text();
       const next = parseSession(text);
       engine.current.stop();

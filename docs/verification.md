@@ -14,6 +14,8 @@ Run from the repository root:
 
 The expected 132 BPM four-bar WAV count at 44.1 kHz is `320727` samples. The rendered WAV is mono, 16-bit PCM, and is bounded to the requested four-bar duration; envelopes are scheduled to decay inside that buffer rather than adding an unbounded tail.
 
+Live playback, WAV, and MIDI now share the same swing-aware four-bar event timeline. MIDI uses 480 ticks per quarter note and rounds shared event times to that declared resolution; verification includes a nonzero-swing odd-step assertion and a chained-pattern byte-timing assertion. Imports are capped at 1 MB, and non-finite offline samples fail WAV encoding explicitly.
+
 ## Browser QA matrix
 
 | Check | Chromium desktop | Chromium narrow viewport | Safari | Evidence |
