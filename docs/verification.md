@@ -16,6 +16,14 @@ The expected 132 BPM four-bar WAV count at 44.1 kHz is `320727` samples. The ren
 
 Live playback, WAV, and MIDI now share the same swing-aware four-bar event timeline. MIDI uses 480 ticks per quarter note and rounds shared event times to that declared resolution; verification includes a nonzero-swing odd-step assertion and a chained-pattern byte-timing assertion. Imports are capped at 1 MB, and non-finite offline samples fail WAV encoding explicitly.
 
+## Acceptance snapshot — 2026-09-06
+
+Source SHA: `4f1267b1c7931c70edeb324bbaec8fd68dffa4a4`
+
+`npm run verify` passed with exact event and automation round-trip, malformed import rejection, `320727` samples at 132 BPM, swing-aware MIDI/chain timing, and live swung voice timing. `npx tsc --noEmit` passed. Production build evidence exists for this accepted SHA in CI and local verification.
+
+Repository-wide `npm run lint` remains red on existing shared UI helper diagnostics and two page compiler heuristics; these are recorded as a tooling limitation, not as v1 sound/export/import behavior. No browser action was used for this snapshot.
+
 ## Browser QA matrix
 
 | Check | Chromium desktop | Chromium narrow viewport | Safari | Evidence |
