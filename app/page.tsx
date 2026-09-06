@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -106,7 +107,33 @@ export default function Home() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState<'wav' | 'midi' | 'import' | null>(null);
   const sessionRef = useRef(session);
-  sessionRef.current = session;
+
+  const updateSession = useCallback((recipe: (draft: Session) => void) => {
+    setSession((current) => {
+      const draft = cloneSession(current);
+      recipe(draft);
+      return draft;
+    });
+  }, []);
+
+  const toggleTransport = useCallback(async () => {
+    if (playing) {
+      engine.current.stop();
+      setPlaying(false);
+      setPlayhead(null);
+      setStatus('Transport stopped. Voices released.');
+      return;
+    }
+    try {
+      await engine.current.start(session, (patternIndex, step) => {
+        setPlayhead({ pattern: patternIndex, step });
+      });
+      setPlaying(true);
+      setStatus('Running live from the audio clock.');
+    } catch {
+      setStatus('Audio could not start. Press Start again after allowing sound.');
+    }
+  }, [playing, session]);
 
   const pattern = session.patterns[session.activePattern];
   const event = pattern.events[Math.min(selectedStep, pattern.events.length - 1)];
@@ -118,14 +145,26 @@ export default function Home() {
   }, [pattern]);
 
   useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
     const audioEngine = engine.current;
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) setSession(parseSession(saved));
-    } catch {
-      setStatus('Saved data could not be restored; starting with a clean session.');
-    }
-    return () => audioEngine.stop();
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const saved = window.localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          setSession(parseSession(saved));
+          setStatus('Saved session restored.');
+        }
+      } catch {
+        setStatus('Saved data could not be restored; starting with a clean session.');
+      }
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      audioEngine.stop();
+    };
   }, []);
 
   useEffect(() => {
@@ -172,7 +211,7 @@ export default function Home() {
       },
     }, { signal: lifecycle.signal })).catch(() => setStatus('Structured control registration is unavailable in this browser.'));
     return () => lifecycle.abort();
-  }, []);
+  }, [updateSession]);
 
   useEffect(() => {
     const onKey = (keyboardEvent: KeyboardEvent) => {
@@ -188,34 +227,7 @@ export default function Home() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
-
-  function updateSession(recipe: (draft: Session) => void) {
-    setSession((current) => {
-      const draft = cloneSession(current);
-      recipe(draft);
-      return draft;
-    });
-  }
-
-  async function toggleTransport() {
-    if (playing) {
-      engine.current.stop();
-      setPlaying(false);
-      setPlayhead(null);
-      setStatus('Transport stopped. Voices released.');
-      return;
-    }
-    try {
-      await engine.current.start(session, (patternIndex, step) => {
-        setPlayhead({ pattern: patternIndex, step });
-      });
-      setPlaying(true);
-      setStatus('Running live from the audio clock.');
-    } catch {
-      setStatus('Audio could not start. Press Start again after allowing sound.');
-    }
-  }
+  }, [session, toggleTransport]);
 
   function choosePattern(index: number) {
     updateSession((draft) => {
