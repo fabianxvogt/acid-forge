@@ -24,6 +24,16 @@ Source SHA: `d128ba5819aa7f25e39c59683e54cc55fd320e71`
 
 No browser action was used for this snapshot. Browser QA remains a separate open gate.
 
+## Public preview — 2026-09-06
+
+- URL: https://acid-forge.fabian523417.chatgpt.site
+- Provider: OpenAI Sites, public static preview, Site version 1.
+- Source provenance: `9ffc50d24a6752cfd46277d4244f2685250e9846`.
+- Binding: `.openai/hosting.json` retains the existing Site project and `dist/client` static directory.
+- Deployment is static-only; there is no Worker entrypoint or Worker hash to verify.
+- Terminal HTTP checks returned `200`, `text/html` for the root, `text/javascript` for every referenced JS file, and `text/css` for the stylesheet. Hosted SHA-256 values matched the corresponding local `dist/client` assets.
+- This preview does not claim full-v1 browser or audio acceptance. Browser QA remains pending.
+
 ## Browser QA matrix
 
 | Check | Chromium desktop | Chromium narrow viewport | Safari | Evidence |
