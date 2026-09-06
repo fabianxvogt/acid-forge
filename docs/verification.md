@@ -18,11 +18,11 @@ Live playback, WAV, and MIDI now share the same swing-aware four-bar event timel
 
 ## Acceptance snapshot — 2026-09-06
 
-Source SHA: `4f1267b1c7931c70edeb324bbaec8fd68dffa4a4`
+Source SHA: `d128ba5819aa7f25e39c59683e54cc55fd320e71`
 
-`npm run verify` passed with exact event and automation round-trip, malformed import rejection, `320727` samples at 132 BPM, swing-aware MIDI/chain timing, and live swung voice timing. `npx tsc --noEmit` passed. Production build evidence exists for this accepted SHA in CI and local verification.
+`npm run verify` passed with exact event and automation round-trip, malformed import rejection, `320727` samples at 132 BPM, swing-aware MIDI/chain timing, and live swung voice timing. `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed for this source.
 
-Repository-wide `npm run lint` remains red on existing shared UI helper diagnostics and two page compiler heuristics; these are recorded as a tooling limitation, not as v1 sound/export/import behavior. No browser action was used for this snapshot.
+No browser action was used for this snapshot. Browser QA remains a separate open gate.
 
 ## Browser QA matrix
 
