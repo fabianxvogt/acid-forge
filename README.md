@@ -1,3 +1,13 @@
+<!-- portfolio
+{
+  "title": "Acid Forge",
+  "topic": "Music/Sound & rhythm",
+  "type": "product",
+  "description": "A local-first browser acid instrument for composing mono subtractive basslines",
+  "demo": "https://acid-forge.fabian523417.chatgpt.site"
+}
+-->
+
 # Acid Forge
 
 Acid Forge is a local-first browser instrument for making short acid basslines with an original mono subtractive voice. Choose a source preset, edit a 16- or 32-step pattern, add accents and slides, chain patterns, record filter/drive moves, then save or export the result.
